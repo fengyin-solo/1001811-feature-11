@@ -26,8 +26,29 @@ def list_entries(
     """按诉求编号与状态过滤公众诉求列表；没有数据时返回空页，不报错。"""
     if size > 200:
         raise HTTPException(status_code=400, detail="每页最多 200 条，请缩小分页范围")
+    if status and status not in STATUSES:
+        raise HTTPException(status_code=400, detail=f"诉求状态「{status}」不在可选范围内")
     items, total = service.list_entries(keyword=keyword, status=status, page=page, size=size)
     return PageResult(items=items, total=total, page=page, size=size)
+
+
+@router.get("/todo", response_model=PageResult[dict])
+def list_todo(page: int = 1, size: int = 200) -> PageResult[dict]:
+    """待办清单：汇聚已回复、待跟进的诉求。
+
+    与 ``GET /api/complaint?status=已回复`` 同口径，待办条数就是列表里
+    已回复诉求的条数，两处数量始终一致。
+    """
+    items, total = service.todo_entries()
+    start = max(page - 1, 0) * size
+    return PageResult(items=items[start:start + size], total=total, page=page, size=size)
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出公众诉求清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "complaint", "total": total, "items": items}
 
 
 @router.get("/{entry_id}", response_model=dict)
@@ -50,16 +71,13 @@ def create_entry(payload: EntryPayload) -> ActionResult:
 
 @router.post("/{entry_id}/actions", response_model=ActionResult)
 def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
-    """对单条诉求记录执行受理诉求、提交回复、关闭诉求；不允许的动作会被拦下并说明原因。"""
+    """对单条诉求执行受理诉求、提交回复、关闭诉求。
+
+    受理需带受理人员、处理措施；回复需带回复内容。重复提交同一动作只会
+    生效一次，后端按当前状态拦下并说明原因。
+    """
     action = str(payload.values.get("action") or "").strip()
-    entry, message = service.run_action(entry_id, action)
+    entry, message = service.run_action(entry_id, action, payload.values)
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出公众诉求清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "complaint", "total": total, "items": items}
