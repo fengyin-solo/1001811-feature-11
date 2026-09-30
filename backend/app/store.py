@@ -8,6 +8,27 @@ from typing import Any
 
 from app.seed import SEED_ROWS
 
+MODULE_DISPLAY_NAMES = {
+    "pipe": "管段档案",
+    "manhole": "检查井",
+    "valve": "阀门井室",
+    "pumpstation": "泵站设施",
+    "patrol": "巡查任务",
+    "defect": "缺陷登记",
+    "cctv": "内窥检测",
+    "repair": "修复施工",
+    "pressure": "压力监测",
+    "flow": "流量监测",
+    "leak": "泄漏排查",
+    "dredge": "清淤疏浚",
+    "material": "养护材料",
+    "equip": "养护机械",
+    "traffic": "占道许可",
+    "complaint": "公众诉求",
+    "fund": "养护资金",
+    "archive": "管网档案",
+}
+
 
 class Store:
     def __init__(self) -> None:
@@ -28,11 +49,16 @@ class Store:
         return None
 
     def overview(self) -> dict[str, object]:
+        # 延迟导入，避免 store -> service -> store 的模块初始化环。
+        from app.services.complaint import ComplaintService
+
+        ComplaintService.sync_rows()
+
         modules: list[dict[str, object]] = []
         for name in self.module_names():
             rows = self.rows(name)
             modules.append({
-                "name": name,
+                "name": MODULE_DISPLAY_NAMES.get(name, name),
                 "created": len(rows),
                 "pending": sum(1 for row in rows if row.get("pending")),
                 "abnormal": sum(1 for row in rows if row.get("abnormal")),
